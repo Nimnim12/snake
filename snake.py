@@ -221,7 +221,7 @@ class Directions(Enum):
     down = [1, 0]
     left = [0, -1]
     right = [0, 1]
-    none = [0, 0]
+    none = [-100, -100]
 
 
 class Snake:
@@ -245,8 +245,9 @@ class Board:
         self.apple = self.generate_apple()
 
     def move_snake(self, dir):
-        row = self.snake.tail[0][0] + dir.value[0]
-        col = self.snake.tail[0][1] + dir.value[1]
+        prev_head_row, prev_head_col = self.snake.tail[0]
+        row = prev_head_row + dir.value[0]
+        col = prev_head_col + dir.value[1]
         if not self.check_colisions(row, col):
             self.snake.tail.insert(0, [row, col])
             if self.board[row][col] == 2:
@@ -256,14 +257,16 @@ class Board:
             else:
                 deletedpoint = self.snake.tail.pop()
                 self.board[deletedpoint[0]][deletedpoint[1]] = 0
-            self.board[row][col] = 1
+            self.board[row][col] = 3
+            if len(self.snake.tail) > 1:
+                self.board[prev_head_row][prev_head_col] = 1
             return 0
         return -1
 
     def check_colisions(self, row, col):
-        if row > self.height or row < 0:
+        if row >= self.height or row < 0:
             return True
-        if col > self.width or row < 0:
+        if col >= self.width or col < 0:
             return True
         if [row, col] in self.snake.tail:
             return True
@@ -286,6 +289,7 @@ class Board:
         applerow = chosenspot[0]
         applecol = chosenspot[1]
         self.board[applerow][applecol] = 2
+        self.apple = (applerow, applecol)
         return applerow, applecol
 
 
@@ -293,6 +297,7 @@ class Gui:
     BACKGROUND_COLOR = (0, 0, 0)
     SNAKE_COLOR = (255, 255, 255)
     APPLE_COLOR = (255, 0, 0)
+    HEAD_COLOR = (0, 255, 0)
 
     def __init__(self, width, height, board, maze):
         # Create first window
@@ -306,12 +311,14 @@ class Gui:
     def paint_board(self):
         for row in range(self.board.height):
             for col in range(self.board.width):
-                if row + self.maze.ARENA_WIDTH * col < self.maze.ARENA_SIZE:
-                    self.paint_number(row, col, self.maze.getPathNumber(row, col))
+                #if row + self.maze.ARENA_WIDTH * col < self.maze.ARENA_SIZE:
+                    #self.paint_number(row, col, self.maze.getPathNumber(row, col))
                 if (self.board.board[row][col] == 1):
                     self.paint_rectangle(row, col, self.SNAKE_COLOR)
                 elif (self.board.board[row][col] == 2):
                     self.paint_rectangle(row, col, self.APPLE_COLOR)
+                elif (self.board.board[row][col] == 3):
+                    self.paint_rectangle(row, col, self.HEAD_COLOR)
 
     def paint_rectangle(self, row, col, color):
         width, height = self.size
@@ -320,7 +327,7 @@ class Gui:
         rectwidth = floor(width / self.board.width) - 2
         rectheight = floor(height / self.board.height) - 2
         rect = pygame.Rect(rectcol, rectrow, rectwidth, rectheight)
-        pygame.draw.rect(self.screen, color, rect, 1)
+        pygame.draw.rect(self.screen, color, rect)
 
     def paint_number(self, row, col, number):
         width, height = self.size
@@ -335,25 +342,25 @@ class AI():
         headrow, headcol = board.snake.tail[0]
         path_number = maze.getPathNumber(headrow, headcol)
         dir_to_zero = Directions.none
-        if headrow + 1 + maze.ARENA_WIDTH * headcol < maze.ARENA_SIZE:
+        if not board.check_colisions(headrow + 1, headcol):
             next_path_number = maze.getPathNumber(headrow + 1, headcol)
             if next_path_number == 0:
                 dir_to_zero = Directions.down
             if next_path_number - 1 == path_number:
                 return Directions.down
-        if headrow - 1 + maze.ARENA_WIDTH * headcol < maze.ARENA_SIZE:
+        if not board.check_colisions(headrow - 1, headcol):
             next_path_number = maze.getPathNumber(headrow - 1, headcol)
             if next_path_number == 0:
                 dir_to_zero = Directions.up
             if next_path_number - 1 == path_number:
                 return Directions.up
-        if headrow + maze.ARENA_WIDTH * (headcol + 1) < maze.ARENA_SIZE:
+        if not board.check_colisions(headrow, headcol + 1):
             next_path_number = maze.getPathNumber(headrow, headcol + 1)
             if next_path_number == 0:
                 dir_to_zero = Directions.right
             if next_path_number - 1 == path_number:
                 return Directions.right
-        if headrow + maze.ARENA_WIDTH * (headcol - 1) < maze.ARENA_SIZE:
+        if not board.check_colisions(headrow, headcol - 1):
             next_path_number = maze.getPathNumber(headrow, headcol - 1)
             if next_path_number == 0:
                 dir_to_zero = Directions.left
@@ -372,51 +379,49 @@ class AI():
         last_path_number = maze.getPathNumber(lastrow, lastcol)
         current_dist_to_apple = maze.calc_dist(apple_path_number, head_path_number)
         steps_skipped = 0
+        dir = self.get_next_dir(board, maze)
         if len(board.snake.tail) < maze.ARENA_SIZE / 2:
-            if headrow + 1 + maze.ARENA_WIDTH * headcol < maze.ARENA_SIZE:
+            if not board.check_colisions(headrow + 1, headcol):
                 next_path_number = maze.getPathNumber(headrow + 1, headcol)
-                if (apple_path_number < last_path_number and apple_path_number < next_path_number) or (apple_path_number > last_path_number and apple_path_number > next_path_number):
+                if (next_path_number < last_path_number and next_path_number < head_path_number) or (next_path_number > last_path_number and next_path_number > head_path_number):
                     next_dist_to_apple = maze.calc_dist(apple_path_number, next_path_number)
                     if steps_skipped < current_dist_to_apple - next_dist_to_apple:
                         steps_skipped = current_dist_to_apple - next_dist_to_apple
                         dir = Directions.down
-                elif next_path_number == apple_path_number:
-                    return Directions.down
-            if headrow - 1 + maze.ARENA_WIDTH * headcol < maze.ARENA_SIZE:
+            if not board.check_colisions(headrow - 1, headcol):
                 next_path_number = maze.getPathNumber(headrow - 1, headcol)
-                if (apple_path_number < last_path_number and apple_path_number < next_path_number) or (apple_path_number > last_path_number and apple_path_number > next_path_number):
+                if (next_path_number < last_path_number and next_path_number < head_path_number) or (next_path_number > last_path_number and next_path_number > head_path_number):
                     next_dist_to_apple = maze.calc_dist(apple_path_number, next_path_number)
                     if steps_skipped < current_dist_to_apple - next_dist_to_apple:
                         steps_skipped = current_dist_to_apple - next_dist_to_apple
                         dir = Directions.up
-                elif next_path_number == apple_path_number:
-                    return Directions.up
-            if headrow + maze.ARENA_WIDTH * (headcol + 1) < maze.ARENA_SIZE:
+            if not board.check_colisions(headrow, headcol + 1):
                 next_path_number = maze.getPathNumber(headrow, headcol + 1)
-                if (apple_path_number < last_path_number and apple_path_number < next_path_number) or (apple_path_number > last_path_number and apple_path_number > next_path_number):
+                if (next_path_number < last_path_number and next_path_number < head_path_number) or (next_path_number > last_path_number and next_path_number > head_path_number):
                     next_dist_to_apple = maze.calc_dist(apple_path_number, next_path_number)
                     if steps_skipped < current_dist_to_apple - next_dist_to_apple:
                         steps_skipped = current_dist_to_apple - next_dist_to_apple
                         dir = Directions.right
-                elif next_path_number == apple_path_number:
-                    return Directions.right
-            if headrow + maze.ARENA_WIDTH * (headcol - 1) < maze.ARENA_SIZE:
+            if not board.check_colisions(headrow, headcol - 1):
                 next_path_number = maze.getPathNumber(headrow, headcol - 1)
-                if (apple_path_number < last_path_number and apple_path_number < next_path_number) or (apple_path_number > last_path_number and apple_path_number > next_path_number):
+                if (next_path_number < last_path_number and next_path_number < head_path_number) or (next_path_number > last_path_number and next_path_number > head_path_number):
                     next_dist_to_apple = maze.calc_dist(apple_path_number, next_path_number)
                     if steps_skipped < current_dist_to_apple - next_dist_to_apple:
-                        steps_skipped = current_dist_to_apple - next_dist_to_apple
-                        dir = Directions.down
-                elif next_path_number == apple_path_number:
-                    return Directions.down
-        else:
-            dir = self.get_next_dir()
+                        dir = Directions.left
+        if dir == Directions.none:
+            if not board.check_colisions(headrow + 1, headcol):
+                return Directions.down
+            if not board.check_colisions(headrow - 1, headcol):
+                return Directions.up
+            if not board.check_colisions(headrow, headcol + 1):
+                return Directions.right
+            if not board.check_colisions(headrow, headcol - 1):
+                return Directions.left
         return dir
 
 
 def win_game():
     messagebox.showinfo("Ok", "You won!")
-    pygame.quit()
 
 
 def main():
@@ -430,7 +435,7 @@ def main():
     # game loop termination condition
     running = True
     # lose condition tracker
-    lose = False
+    lose = 0
     # game clock
     clock = pygame.time.Clock()
     # event added to event queue every %time miliseconds
@@ -440,6 +445,7 @@ def main():
     pygame.time.set_timer(AUTOMOVEEVENT, time)
     # direction where snake will move on its own
     lastknowndirection = Directions.left
+    pause = False
     while (running):
         gui.screen.fill(Gui.BACKGROUND_COLOR)
         gui.paint_board()
@@ -466,15 +472,16 @@ def main():
             lastknowndirection = dir
 
         if lose == -1:
-            board = Board(40, 40)
+            board = Board(maze.ARENA_HEIGHT, maze.ARENA_HEIGHT)
             gui = Gui(1200, 800, board, maze)
-            lose = False
+            lose = 0
             lastknowndirection = Directions.left
+
         elif lose == 1:
             win_game()
         pygame.display.update()
         # game will run in 60 FPS
-        clock.tick(60)
+        clock.tick(30)
 
 
 if __name__ == '__main__':
